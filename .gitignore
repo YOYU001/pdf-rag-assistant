@@ -1,2 +1,4 @@
 .env
 google-Sandra_Liou_resume.pdf
+__pycache__
+chroma_db

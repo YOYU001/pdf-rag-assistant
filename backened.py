@@ -80,6 +80,10 @@ async def ingest(file:UploadFile = File(...)):
 
     collection = get_or_create_collection()
 
+    # 刪掉同一份檔案的舊 chunks，避免重複
+    existing = collection.get(where={"source": file.filename})
+    if existing["ids"]:
+        collection.delete(ids=existing["ids"])
 
     pages = extract_text(tmp_path)
     all_chunks = []
@@ -123,7 +127,7 @@ async def ingest(file:UploadFile = File(...)):
 #這是要確認前端的資料格式
 class AskRequest(BaseModel):
     question:str
-    n_results: int = 3 #要找幾個相關的chunk   default是3 也可以自己輸入
+    n_results: int = 10 #要找幾個相關的chunk   default是10 也可以自己輸入
 
 
 @app.post("/ask") #當前端呼叫 /ask 時執行下面的函數。
@@ -131,7 +135,16 @@ async def ask(request:AskRequest):
     collection = get_or_create_collection()
     if collection.count == 0:
         return {"error":"No document yet"}
-    question_embedding = embed_text([request.question])[0]
+    # 把問題翻成英文再做 embedding，讓中文問題也能找到英文 PDF 的內容
+    translation = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "Translate the following question to English. Return only the translated text, nothing else."},
+            {"role": "user", "content": request.question}
+        ]
+    )
+    search_question = translation.choices[0].message.content.strip()
+    question_embedding = embed_text([search_question])[0]
 
     results = collection.query(
         query_embeddings=[question_embedding],
@@ -159,8 +172,11 @@ async def ask(request:AskRequest):
             "score": round(dist, 4)
         })
 
-# 6. 把 chunks 合併成 context
-    context = "\n\n---\n\n".join(chunks)
+# 6. 把 chunks 合併成 context（帶頁碼）
+    context = "\n\n---\n\n".join(
+        f"[Page {meta['page']}]\n{chunk}"
+        for chunk, meta in zip(chunks, metadatas)
+    )
 
  # 7. 用新版 OpenAI Responses API 回答
     response = client.responses.create(
@@ -169,6 +185,8 @@ async def ask(request:AskRequest):
         Answer the question using ONLY the provided context.
         Always mention which page the answer came from.
         If the answer is not in the context, say "I don't know."
+        Reply in the same language as the question.
+        If the user's message is a language or formatting instruction (e.g. "reply in Traditional Chinese", "請用繁體中文回答"), follow that instruction and re-answer the most recent topic accordingly. Do NOT say "I don't know" for language or formatting requests.
         """,
         
         input=f"""
@@ -186,6 +204,12 @@ async def ask(request:AskRequest):
         "answer": response.output_text,
         "sources": sources,
     }
+
+@app.delete("/clear")
+def clear():
+    chroma_client.delete_collection("rag_collection")
+    chroma_client.create_collection("rag_collection")
+    return {"message": "Database cleared"}
 
 ## 這只是回報訊息
 @app.get("/")

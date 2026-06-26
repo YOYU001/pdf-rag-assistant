@@ -15,32 +15,41 @@ st.caption(" Powered by RAG — Retrieval Augmented Generation")
 with st.sidebar:
 
     st.header("Upload your PDF")
-    uploaded_file = st.file_uploader(
+    uploaded_files = st.file_uploader(
         "Choose a PDF file",
         type=["pdf"],
-        help="Upload a PDF file to chat with it."
+        help="Upload one or more PDF files to chat with them.",
+        accept_multiple_files=True
         )
 
-    if uploaded_file:
+    if uploaded_files:
         if st.button("Ingest PDF", type="primary", use_container_width=True):
-            with st.spinner("Reading, chunking and embedding your PDF..."):
-                response = requests.post(
-                    f"{BACKEND_URL}/ingest",
-                    files={"file": (uploaded_file.name, uploaded_file, "application/pdf")}
-                )
+            for uploaded_file in uploaded_files:
+                with st.spinner(f"Processing {uploaded_file.name}..."):
+                    response = requests.post(
+                        f"{BACKEND_URL}/ingest",
+                        files={"file": (uploaded_file.name, uploaded_file, "application/pdf")}
+                    )
+                if response.status_code == 200:
+                    data = response.json()
+                    st.success(f"{uploaded_file.name}：Added {data['chunks_added']} chunks")
+                    st.info(f"Total in database: {data['total_chunks']} chunks")
+                else:
+                    st.error(f"{uploaded_file.name}：Something went wrong. Is the backend running?")
 
-            if response.status_code == 200:
-                data = response.json()
-                st.success(f"Done! Added {data['chunks_added']} chunks")
-                st.info(f"Total in database: {data['total_chunks']} chunks")
-            else:
-                st.error("Something went wrong. Is the backend running?")
+    st.divider()
+    if st.button("🗑️ 清除資料庫", use_container_width=True):
+        response = requests.delete(f"{BACKEND_URL}/clear")
+        if response.status_code == 200:
+            st.success("資料庫已清除！")
+        else:
+            st.error("清除失敗")
 
     st.divider()
     n_results = st.slider(
         "回答精確度（越高參考越多資料）",
         min_value=1,
-        max_value=10,
+        max_value=20,
         value=5
     )
 
