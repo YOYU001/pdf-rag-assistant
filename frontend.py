@@ -1,7 +1,7 @@
 import streamlit as st #快速做網頁的套件
 import requests #串聯 FastAPI 的套件
 
-BACKEND_URL = "http://localhost:8000" #前端要去哪個port找後端
+BACKEND_URL = st.secrets.get("BACKEND_URL", "http://localhost:8000")
 
 st.set_page_config(
     page_title="Chat with your PDF",
