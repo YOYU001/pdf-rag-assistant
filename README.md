@@ -1,6 +1,7 @@
 # Chat with your PDF
 
 一個基於 RAG（Retrieval Augmented Generation）技術的 PDF 問答助手，支援中英文提問。
+使用網站的連結：https://pdf-rag-assistant-b2qlii44ujbdi99ohrsv94.streamlit.app/
 
 ## 功能
 
